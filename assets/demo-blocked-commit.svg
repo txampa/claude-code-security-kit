@@ -1,0 +1,49 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="880" height="470" viewBox="0 0 880 470" font-family="'SF Mono','Cascadia Code','Fira Code',Consolas,Menlo,monospace" font-size="14">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#15161e"/>
+      <stop offset="100%" stop-color="#1a1b26"/>
+    </linearGradient>
+  </defs>
+
+  <!-- window -->
+  <rect x="0" y="0" width="880" height="470" rx="12" fill="url(#bg)" stroke="#2f3149" stroke-width="1"/>
+
+  <!-- title bar -->
+  <rect x="0" y="0" width="880" height="38" rx="12" fill="#1f2030"/>
+  <rect x="0" y="20" width="880" height="18" fill="#1f2030"/>
+  <circle cx="22" cy="19" r="6" fill="#ff5f57"/>
+  <circle cx="42" cy="19" r="6" fill="#febc2e"/>
+  <circle cx="62" cy="19" r="6" fill="#28c840"/>
+  <text x="440" y="24" text-anchor="middle" fill="#787c99" font-size="12">claude-code — PreToolUse hook: secret-scan.sh</text>
+
+  <!-- terminal content -->
+  <text x="24" y="70" fill="#9ece6a">➜</text>
+  <text x="44" y="70" fill="#c0caf5">claude "commit the stripe integration"</text>
+
+  <text x="24" y="100" fill="#787c99">⏺ Bash(git commit -m "feat: add stripe checkout")</text>
+
+  <!-- blocked banner -->
+  <rect x="24" y="118" width="832" height="34" rx="6" fill="#3b1d2a"/>
+  <text x="38" y="140" fill="#f7768e" font-weight="bold">🛑 BLOCKED: possible secret/credential in what you are about to push to git.</text>
+
+  <text x="44" y="178" fill="#e0af68">⛔ Stripe secret key:</text>
+  <text x="64" y="200" fill="#787c99">12:</text>
+  <text x="94" y="200" fill="#9ece6a">+ const STRIPE_KEY = "sk_live_51Hxxxxxxxxxxxxxxxxxxx"</text>
+
+  <text x="44" y="230" fill="#e0af68">⛔ Generic assigned token:</text>
+  <text x="64" y="252" fill="#787c99">27:</text>
+  <text x="94" y="252" fill="#9ece6a">+ WEBHOOK_SECRET = "whsec_mB4xxxxxxxxxxxxxxxx"</text>
+
+  <text x="24" y="290" fill="#c0caf5" font-weight="bold">What to do:</text>
+  <text x="44" y="314" fill="#a9b1d6">1. Remove the secret from the code → use an environment variable or .env (gitignored).</text>
+  <text x="44" y="336" fill="#a9b1d6">2. If it is ALREADY committed, rewrite history before pushing.</text>
+  <text x="44" y="358" fill="#a9b1d6">3. Confirmed false positive → retry with: ALLOW_SECRET_COMMIT=1</text>
+
+  <!-- claude reaction -->
+  <text x="24" y="396" fill="#7aa2f7">⏺ The commit was blocked — I'll move the keys to .env and reference</text>
+  <text x="40" y="416" fill="#7aa2f7">process.env.STRIPE_KEY instead, then commit again.</text>
+
+  <text x="24" y="448" fill="#9ece6a">➜</text>
+  <text x="44" y="448" fill="#565a6e">your API keys never reach GitHub ✓</text>
+</svg>
