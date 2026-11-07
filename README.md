@@ -5,7 +5,7 @@ Stop your AI agent from leaking API keys, reading your SSH keys, or piping `curl
 
 ![License: MIT](https://img.shields.io/badge/license-MIT-green)
 ![Claude Code](https://img.shields.io/badge/works%20with-Claude%20Code-d97757)
-![Shell](https://img.shields.io/badge/hooks-pure%20bash-blue)
+![Shell](https://img.shields.io/badge/hooks-bash%20%2B%20node-blue)
 ![PRs welcome](https://img.shields.io/badge/PRs-welcome-brightgreen)
 
 ![Demo: commit with a Stripe key gets blocked](assets/demo-blocked-commit.svg)
@@ -34,9 +34,9 @@ Out of the box, Claude Code asks for permission a lot — but most people end up
 git clone https://github.com/txampa/claude-code-security-kit.git
 cd claude-code-security-kit
 
-# 1. Copy the hooks into your project
+# 1. Copy the hooks into your project (keep them together: secret-scan.sh calls git-target.mjs)
 mkdir -p your-project/.claude/hooks
-cp hooks/*.sh your-project/.claude/hooks/
+cp hooks/* your-project/.claude/hooks/
 
 # 2. Merge settings.template.json into your-project/.claude/settings.json
 #    (permissions + hooks blocks)
@@ -44,7 +44,27 @@ cp hooks/*.sh your-project/.claude/hooks/
 
 That's it. Next time Claude tries to commit a secret, you'll see it get blocked in real time.
 
+**Requirements:** `git`, `bash` (Git Bash on Windows) and Node.js 18+ for the `.mjs` hooks.
+
 > 💡 **Tip:** you can also install the hooks globally in `~/.claude/hooks/` and reference them from `~/.claude/settings.json` so every project is covered.
+
+---
+
+## 🔧 v2 (November 2026): what was broken in v1
+
+I found these bugs in my own setup and they were in this kit too. **If you installed v1, please update.**
+
+- **`pre-bash-safety.sh` and `pre-commit-secrets.sh` never blocked anything.** They read `command` from the root of the hook input, but Claude Code sends it in `tool_input.command`. They also exited with `1`, which is a non-blocking error: blocking needs `2`.
+- **`secret-scan.sh` skipped most real commits.** It pulled the command out with `grep`, which stopped at the first escaped quote, and it scanned `$CLAUDE_PROJECT_DIR` instead of the repo the commit lands in. So `cd "my repo" && git commit` and anything in a nested repo were never scanned. Only a plain `git commit` in the project root was.
+- **The block message printed the secret it found,** so the value ended up in the transcript anyway.
+
+What v2 does instead:
+
+- `secret-scan.sh` + `git-target.mjs` parse the command properly and follow its `cd`, `git -C` and shell variables to the right repo. It now prints only labels and counts.
+- `pre-commit-secrets.sh` is gone: `secret-scan.sh` covers it.
+- `pre-bash-safety.mjs` blocks only real damage. The old version matched substrings, so `rm -rf /` also caught `rm -rf /tmp/x`. The new one was checked against ~13,000 real agent commands without a single false block.
+
+**To upgrade:** copy the new `hooks/*`, delete the two old `.sh` hooks, and replace the `hooks` block in your `settings.json` with the one in `settings.template.json`.
 
 ---
 
@@ -52,9 +72,9 @@ That's it. Next time Claude tries to commit a secret, you'll see it get blocked 
 
 | File | Type | What it does |
 |---|---|---|
-| `hooks/secret-scan.sh` | PreToolUse hook | Intercepts `git commit` / `git push` and scans the **actual diff** for credentials. Blocks before anything leaves your machine |
-| `hooks/pre-bash-safety.sh` | PreToolUse hook | Blocks irreversible commands (`rm -rf /`, fork bombs, `dd`, `mkfs`) and warns on high-risk ones (`git push --force`, `DROP TABLE`) |
-| `hooks/pre-commit-secrets.sh` | PreToolUse hook | Per-file staged scan — complementary patterns, skips lockfiles and `.env.example` |
+| `hooks/secret-scan.sh` | PreToolUse hook (Bash, PowerShell) | Intercepts `git commit` / `git push` and scans the **actual diff** for credentials, in the repo the commit really lands in. Blocks before anything leaves your machine |
+| `hooks/git-target.mjs` | Helper | Works out which repo each `git commit` / `git push` in a command lands in, following `cd`, `git -C` and shell variables |
+| `hooks/pre-bash-safety.mjs` | PreToolUse hook (Bash) | Blocks what can't be undone: recursive delete of `/`, a drive, home or a system directory; `dd` or `>` to a disk; `mkfs`; `chmod -R 777 /`; fork bombs |
 | `settings.template.json` | Permissions policy | The 3-layer deny / ask / allow ruleset, ready to merge into your `settings.json` |
 
 ---
@@ -83,11 +103,13 @@ Read-only git, `git add/commit` (covered by the secret scanner!), `npm run`, `no
 
 ## 🔍 What the secret scanner catches
 
-`secret-scan.sh` inspects the **added lines of the real diff** — so it works even if the command is disguised. High-signal patterns, very few false positives:
+`secret-scan.sh` inspects the **added lines of the real diff**, so it works even if the command is disguised. It follows the command to the right repo (`cd "my repo" && git commit`, `git -C`, `R=...; cd "$R"`), nested repos included. It never prints the value it found, only the label and how many lines matched. High-signal patterns, very few false positives:
 
 | Provider | Pattern |
 |---|---|
 | Anthropic / OpenAI | `sk-...` |
+| Google OAuth client secret | `GOCSPX-...` |
+| LangSmith | `lsv2_pt_...`, `lsv2_sk_...` |
 | GitHub | `ghp_...`, `gho_...`, `github_pat_...` |
 | AWS | `AKIA...` |
 | Google | `AIza...` |
@@ -96,9 +118,9 @@ Read-only git, `git add/commit` (covered by the secret scanner!), `npm run`, `no
 | Stripe | `sk_live_...` |
 | Private keys | `-----BEGIN ... PRIVATE KEY-----` |
 | JWT | `eyJ...eyJ...` |
-| Generic | `api_key / secret / token / password = "..."` |
+| Generic | Quoted literals like `api_key = "..."` or `.env` style `API_KEY=...` (skipped in test files, where fake passwords are normal) |
 
-**False positive?** Re-run with `ALLOW_SECRET_COMMIT=1` — an explicit, auditable bypass instead of disabling the hook.
+**False positive?** Re-run with `ALLOW_SECRET_COMMIT=1` in front of the command. That's an explicit, auditable bypass instead of disabling the hook, and Claude is told to ask you first.
 
 ---
 
@@ -123,6 +145,7 @@ What most "security configs" won't tell you:
 
 - ✅ **Strong:** `Read(...)` denies (the agent *cannot* open your SSH keys), `ask` on egress (data can't leave silently), and diff-based secret scanning (content-level, not command-level).
 - ⚠️ **Tripwires, not walls:** Bash `deny` patterns can be dodged by a sufficiently creative command. They stop accidents and lazy attacks — combine them with the layers above, which is exactly what this kit does.
+- ⚠️ **One known gap:** in `git add new-file && git commit` in a single command, a brand-new file isn't visible yet when the hook runs. The `git push` scan catches it before it leaves your machine.
 - 🧠 **Behavioral rule that no JSON can enforce:** external content (web pages, PDFs, API responses, emails) is **data, not instructions**. Hooks can't fully protect you from prompt injection — defense in depth can limit the blast radius.
 
 ---
@@ -138,10 +161,10 @@ What most "security configs" won't tell you:
 ## ❓ FAQ
 
 **Does it slow Claude down?**
-No. Hooks only fire on Bash calls, the scan runs on the staged diff and takes milliseconds.
+No. Hooks only fire on shell calls, `secret-scan.sh` only starts Node when the command mentions git, and the scan itself takes milliseconds.
 
 **Does it work on Windows?**
-Yes — Claude Code runs hooks through Git Bash on Windows. This kit is developed on Windows 10 + Git Bash.
+Yes — Claude Code runs hooks through Git Bash on Windows. This kit is developed on Windows 11 + Git Bash.
 
 **Why hooks AND permissions? Isn't one enough?**
 Permissions are policy ("may this command run?"). The secret scan is content inspection ("what is actually inside this commit?"). Different layers catch different mistakes.
