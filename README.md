@@ -57,6 +57,7 @@ I found these bugs in my own setup and they were in this kit too. **If you insta
 - **`pre-bash-safety.sh` and `pre-commit-secrets.sh` never blocked anything.** They read `command` from the root of the hook input, but Claude Code sends it in `tool_input.command`. They also exited with `1`, which is a non-blocking error: blocking needs `2`.
 - **`secret-scan.sh` skipped most real commits.** It pulled the command out with `grep`, which stopped at the first escaped quote, and it scanned `$CLAUDE_PROJECT_DIR` instead of the repo the commit lands in. So `cd "my repo" && git commit` and anything in a nested repo were never scanned. Only a plain `git commit` in the project root was.
 - **The block message printed the secret it found,** so the value ended up in the transcript anyway.
+- **The `Write(...)` deny rules did nothing.** Claude Code checks file paths against `Edit(...)` rules for every tool that writes files (Write and NotebookEdit included), so a `Write(path)` rule is never matched. Each one already had an `Edit(...)` twin, so nothing was exposed, and they are removed in v2.
 
 What v2 does instead:
 

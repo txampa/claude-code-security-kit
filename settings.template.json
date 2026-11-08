@@ -24,17 +24,11 @@
       "Read(./**/.git-credentials)",
 
       "Edit(~/.ssh/**)",
-      "Write(~/.ssh/**)",
       "Edit(~/.bashrc)",
-      "Write(~/.bashrc)",
       "Edit(~/.zshrc)",
-      "Write(~/.zshrc)",
       "Edit(~/.profile)",
-      "Write(~/.profile)",
       "Edit(~/.bash_profile)",
-      "Write(~/.bash_profile)",
       "Edit(/etc/**)",
-      "Write(/etc/**)",
 
       "Bash(rm -rf:*)",
       "Bash(rm -fr:*)",
