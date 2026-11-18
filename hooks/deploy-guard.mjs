@@ -86,16 +86,19 @@ export function compile(rules) {
 export function check(cmd, cwd = '', rules = []) {
   if (typeof cmd !== 'string' || !cmd) return null;
   const segs = segments(cmd);
-  for (const seg of segs) {
-    const hit = builtIn(seg);
-    if (hit) return hit;
-  }
+  let project = null;
   for (const r of rules) {
     if (r.whenRe && !(r.whenRe.test(cmd) || r.whenRe.test(cwd))) continue;
-    if (segs.some(s => r.commandRe.test(s)))
-      return [r.decision === ASK ? ASK : DENY, r.reason || 'a project deploy rule matched', r.instead || null];
+    if (segs.some(s => r.commandRe.test(s))) {
+      project = [r.decision === ASK ? ASK : DENY, r.reason || 'a project deploy rule matched', r.instead || null];
+      break;
+    }
   }
-  return null;
+  const builtin = segs.map(builtIn).find(Boolean) ?? null;
+  // A deny always beats an ask; between two denies, the project rule has the more specific advice
+  if (project?.[0] === DENY) return project;
+  if (builtin?.[0] === DENY) return builtin;
+  return project ?? builtin;
 }
 
 function main() {

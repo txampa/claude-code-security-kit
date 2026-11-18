@@ -55,6 +55,18 @@ for (const c of [
   'git commit -m "railway up without flags"', 'grep -rn "vercel git connect" docs', 'echo railway up',
 ]) expect(`deploy allows: ${c}`, d(c), false);
 expect('deploy custom rule only in its folder', d('npx vercel --prod', 'C:/work/my-landing'), true);
+{
+  const r2 = deploy.compile([
+    { when: 'billing-app', command: '^railway\\s+up\\b', decision: 'deny', reason: 'billing-app deploys with deploy.ts' },
+    { command: '^railway\\s+up\\b', decision: 'ask', reason: 'a softer project rule' },
+  ]);
+  total++;
+  const a = deploy.check('cd billing-app && railway up', '', r2);
+  if (a?.[2] !== null || a?.[1] !== 'billing-app deploys with deploy.ts') { failed++; console.log('✗ project deny should win over built-in deny', a); }
+  total++;
+  const b = deploy.check('railway up', '', r2);
+  if (b?.[0] !== 'deny') { failed++; console.log('✗ a project ask must not soften a built-in deny', b); }
+}
 total++; try { deploy.compile([{ command: '(' }]); failed++; console.log('✗ compile should reject a broken regex'); } catch {}
 
 // --- db-guard
