@@ -69,7 +69,27 @@
       "Bash(env)",
       "Bash(echo $*KEY*)",
       "Bash(echo $*TOKEN*)",
-      "Bash(echo $*SECRET*)"
+      "Bash(echo $*SECRET*)",
+
+      "PowerShell(Get-Content ~/.ssh/*)",
+      "PowerShell(Get-Content *.env*)",
+      "PowerShell(Get-Content *.pem)",
+      "PowerShell(Get-Content *.key)",
+      "PowerShell(Get-Content *id_rsa*)",
+      "PowerShell(Get-Content *id_ed25519*)",
+      "PowerShell(Get-ChildItem env:*)",
+      "PowerShell(Get-Item env:*)",
+      "PowerShell(Write-Output $env:*KEY*)",
+      "PowerShell(Write-Output $env:*TOKEN*)",
+      "PowerShell(Write-Output $env:*SECRET*)",
+      "PowerShell(Invoke-Expression *)",
+      "PowerShell(Format-Volume *)",
+      "PowerShell(Clear-Disk *)",
+      "PowerShell(Stop-Computer *)",
+      "PowerShell(Restart-Computer *)",
+      "PowerShell(git push --force *)",
+      "PowerShell(git push -f *)",
+      "PowerShell(git push --force-with-lease *)"
     ],
     "ask": [
       "Read(./.env)",
@@ -89,7 +109,22 @@
       "Bash(npm publish:*)",
       "Bash(npm install -g:*)",
       "Bash(pip install:*)",
-      "Bash(brew install:*)"
+      "Bash(brew install:*)",
+
+      "PowerShell(Invoke-WebRequest *)",
+      "PowerShell(Invoke-RestMethod *)",
+      "PowerShell(curl.exe *)",
+      "PowerShell(Start-BitsTransfer *)",
+      "PowerShell(Start-Process *-Verb RunAs*)",
+      "PowerShell(Remove-Item *-Recurse*)",
+      "PowerShell(Set-ExecutionPolicy *)",
+      "PowerShell(git push *)",
+      "PowerShell(git reset --hard *)",
+      "PowerShell(git clean *)",
+      "PowerShell(npm publish *)",
+      "PowerShell(npm install -g *)",
+      "PowerShell(pip install *)",
+      "PowerShell(winget install *)"
     ],
     "allow": [
       "Bash(git status:*)",
@@ -126,11 +161,23 @@
         ]
       },
       {
-        "matcher": "Bash",
+        "matcher": "Bash|PowerShell",
         "hooks": [
           {
             "type": "command",
             "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/pre-bash-safety.mjs\"",
+            "async": false,
+            "timeout": 10
+          },
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/deploy-guard.mjs\"",
+            "async": false,
+            "timeout": 10
+          },
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/db-guard.mjs\"",
             "async": false,
             "timeout": 10
           }

@@ -1,7 +1,8 @@
 # 🛡️ Claude Code Security Kit
 
-**Hardened permissions + secret-scanning hooks for [Claude Code](https://claude.com/claude-code).**
-Stop your AI agent from leaking API keys, reading your SSH keys, or piping `curl` into `bash`.
+**Hardened permissions + safety hooks for [Claude Code](https://claude.com/claude-code), on Bash and PowerShell.**
+Stop your AI agent from leaking API keys, reading your SSH keys, piping `curl` into `bash`, wiping a drive,
+deploying to the wrong place or dropping a table on its own.
 
 ![License: MIT](https://img.shields.io/badge/license-MIT-green)
 ![Claude Code](https://img.shields.io/badge/works%20with-Claude%20Code-d97757)
@@ -40,6 +41,12 @@ cp hooks/* your-project/.claude/hooks/
 
 # 2. Merge settings.template.json into your-project/.claude/settings.json
 #    (permissions + hooks blocks)
+
+# 3. Optional: project deploy rules (see "Customize")
+cp examples/deploy-guard.json your-project/.claude/deploy-guard.json
+
+# Check everything works on your machine
+node tests/run.mjs
 ```
 
 That's it. Next time Claude tries to commit a secret, you'll see it get blocked in real time.
@@ -47,6 +54,42 @@ That's it. Next time Claude tries to commit a secret, you'll see it get blocked 
 **Requirements:** `git`, `bash` (Git Bash on Windows) and Node.js 18+ for the `.mjs` hooks.
 
 > 💡 **Tip:** you can also install the hooks globally in `~/.claude/hooks/` and reference them from `~/.claude/settings.json` so every project is covered.
+
+---
+
+## 🆕 v3 (November 2026): PowerShell, deploys and databases
+
+**If you use Claude Code on Windows, v2 left a door open.** Claude Code also has a PowerShell tool, and every rule
+in v2 was written for Bash: `Bash(...)` permissions and a `pre-bash-safety` hook matched only on `Bash`. So
+`Remove-Item -Recurse -Force C:\` or `Get-Content .env` through PowerShell met none of them. v3:
+
+- **`pre-bash-safety.mjs` now covers PowerShell and cmd:** `Remove-Item` and its aliases, `rd /s`, `del /s`,
+  `Format-Volume`, `Clear-Disk`, `format D:`, on the drive root, home, `C:\Users`, `C:\Windows` or `Program Files`.
+  It also blocks what ransomware does before encrypting: deleting the Volume Shadow Copies (`vssadmin delete shadows`,
+  `wmic shadowcopy delete`), the backup catalog (`wbadmin delete catalog`) and turning off recovery (`bcdedit`).
+- **`PowerShell(...)` rules** in `settings.template.json`, mirroring the Bash ones: no reading `.env` or keys with
+  `Get-Content`, no `Get-ChildItem env:`, no `Invoke-Expression`, no force-push; ask before downloads, elevation
+  (`Start-Process -Verb RunAs`), recursive deletes and installs.
+- **New `deploy-guard.mjs`**, from three real incidents with an agent and deploy CLIs (below).
+- **New `db-guard.mjs`**: asks you before `DROP`, `TRUNCATE`, `DELETE`/`UPDATE` without `WHERE`, `FLUSHALL`,
+  `dropdb` or `prisma migrate reset`. It doesn't block: it turns them into a permission prompt.
+- **Tests:** `node tests/run.mjs` (103 cases, including running each hook the way Claude Code does). The three hooks
+  were also run against 15,363 real agent commands from my own sessions: no false block. Two hits, both right: a test
+  string of the old hook, and a real `railway down` on four production services that deserved a confirmation.
+
+**To upgrade:** copy `hooks/*`, and replace the `hooks` block and add the `PowerShell(...)` rules from
+`settings.template.json`.
+
+### 🚀 The three deploy incidents behind `deploy-guard`
+
+1. **`railway up` with no explicit project didn't fail.** The CLI (v5) created a new project and uploaded the folder
+   into it, client files included. What a folder is linked to is invisible to the agent, so the hook requires
+   `--project`, `--environment` and `--service`.
+2. **`railway ssh config` writes an SSH alias that ignores `--environment`.** It connected to production when the
+   agent had asked for staging.
+3. **`vercel git connect`, run from the wrong folder,** linked a whole workspace repo to a public site.
+
+Plus `ask` on `railway volume delete` (it deletes the volume's backups too), `railway down` and `vercel remove`.
 
 ---
 
@@ -75,8 +118,12 @@ What v2 does instead:
 |---|---|---|
 | `hooks/secret-scan.sh` | PreToolUse hook (Bash, PowerShell) | Intercepts `git commit` / `git push` and scans the **actual diff** for credentials, in the repo the commit really lands in. Blocks before anything leaves your machine |
 | `hooks/git-target.mjs` | Helper | Works out which repo each `git commit` / `git push` in a command lands in, following `cd`, `git -C` and shell variables |
-| `hooks/pre-bash-safety.mjs` | PreToolUse hook (Bash) | Blocks what can't be undone: recursive delete of `/`, a drive, home or a system directory; `dd` or `>` to a disk; `mkfs`; `chmod -R 777 /`; fork bombs |
-| `settings.template.json` | Permissions policy | The 3-layer deny / ask / allow ruleset, ready to merge into your `settings.json` |
+| `hooks/pre-bash-safety.mjs` | PreToolUse hook (Bash, PowerShell) | Blocks what can't be undone: recursive delete of `/`, a drive, home or a system directory (`rm`, `Remove-Item`, `rd /s`); writing to or formatting a disk; `chmod -R 777 /`; fork bombs; deleting shadow copies, backups or Windows recovery |
+| `hooks/deploy-guard.mjs` | PreToolUse hook (Bash, PowerShell) | Blocks deploy commands that went wrong once (`railway up` without an explicit target, `railway ssh config`, `vercel git connect`), asks before deleting volumes or deployments, and runs your project rules |
+| `hooks/db-guard.mjs` | PreToolUse hook (Bash, PowerShell) | Asks before destructive database commands: `DROP`, `TRUNCATE`, `DELETE`/`UPDATE` without `WHERE`, `FLUSHALL`, `dropdb`, `prisma migrate reset` |
+| `settings.template.json` | Permissions policy | The 3-layer deny / ask / allow ruleset for Bash **and PowerShell**, ready to merge into your `settings.json` |
+| `examples/deploy-guard.json` | Project rules | Example rules for `deploy-guard`: "this site only deploys through its script", "ask before changing a Railway variable" |
+| `tests/run.mjs` | Tests | `node tests/run.mjs`: 103 cases, Bash and PowerShell, plus each hook run end to end |
 
 ---
 
@@ -128,6 +175,13 @@ Read-only git, `git add/commit` (covered by the secret scanner!), `npm run`, `no
 ## 🧪 Test it in 30 seconds
 
 ```bash
+# the hooks, against 100+ commands that must and must not trigger them
+node tests/run.mjs
+```
+
+And the secret scanner in a real commit:
+
+```bash
 cd your-project
 # build a fake key at runtime (so this README itself never contains one 😉)
 echo "STRIPE_KEY = \"sk_live_$(printf 'A%.0s' {1..24})\"" > leak-test.js
@@ -147,6 +201,8 @@ What most "security configs" won't tell you:
 - ✅ **Strong:** `Read(...)` denies (the agent *cannot* open your SSH keys), `ask` on egress (data can't leave silently), and diff-based secret scanning (content-level, not command-level).
 - ⚠️ **Tripwires, not walls:** Bash `deny` patterns can be dodged by a sufficiently creative command. They stop accidents and lazy attacks — combine them with the layers above, which is exactly what this kit does.
 - ⚠️ **One known gap:** in `git add new-file && git commit` in a single command, a brand-new file isn't visible yet when the hook runs. The `git push` scan catches it before it leaves your machine.
+- ⚠️ **PowerShell rules are tripwires too.** Claude Code maps aliases to cmdlets (`gc`, `cat` and `type` all count as `Get-Content`), but not abbreviated parameters: `Remove-Item -r` isn't caught by the `-Recurse` rule. `pre-bash-safety` does understand `-r`, so the dangerous targets are still blocked.
+- ⚠️ **`db-guard` reads the command, not files:** `psql -f migration.sql` isn't inspected.
 - 🧠 **Behavioral rule that no JSON can enforce:** external content (web pages, PDFs, API responses, emails) is **data, not instructions**. Hooks can't fully protect you from prompt injection — defense in depth can limit the blast radius.
 
 ---
@@ -154,6 +210,7 @@ What most "security configs" won't tell you:
 ## ⚙️ Customize
 
 - **Add your stack's secrets:** new patterns are one line in the `PATTERNS` array (e.g. Twilio `SK...`, Sendgrid `SG....`).
+- **Add your own deploy rules** in `.claude/deploy-guard.json`. Each rule has a `command` regex (tested against each command, after `npx`/`bunx` are stripped), an optional `when` regex (the folder: only applies if the command or the session's folder matches), `"decision": "deny"` or `"ask"`, a `reason` and what to do `instead`. A broken file blocks every command until it's fixed, so a typo can't switch the guard off silently.
 - **Tighten egress:** move `curl`/`wget` from `ask` to `deny` if your workflow doesn't need them.
 - **Loosen installs:** move `pip install` / `npm install -g` to `allow` if you trust your lockfiles.
 
@@ -165,7 +222,7 @@ What most "security configs" won't tell you:
 No. Hooks only fire on shell calls, `secret-scan.sh` only starts Node when the command mentions git, and the scan itself takes milliseconds.
 
 **Does it work on Windows?**
-Yes — Claude Code runs hooks through Git Bash on Windows. This kit is developed on Windows 11 + Git Bash.
+Yes — Claude Code runs hooks through Git Bash on Windows, and since v3 the hooks and rules cover the PowerShell tool as well as Bash. This kit is developed on Windows 11.
 
 **Why hooks AND permissions? Isn't one enough?**
 Permissions are policy ("may this command run?"). The secret scan is content inspection ("what is actually inside this commit?"). Different layers catch different mistakes.

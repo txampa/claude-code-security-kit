@@ -1,0 +1,16 @@
+{
+  "rules": [
+    {
+      "when": "my-landing",
+      "command": "^vercel\\b.*(--prod\\b|\\bpromote\\b|--target[= ]production)",
+      "decision": "deny",
+      "reason": "production for this site never goes out by hand",
+      "instead": "Run node deploy.mjs: it deploys a preview, checks it, promotes it and rolls back if the live check fails."
+    },
+    {
+      "command": "^railway\\s+variables?\\s+(set|delete)\\b(?!.*--skip-deploys)",
+      "decision": "ask",
+      "reason": "changing a Railway variable without --skip-deploys rebuilds and redeploys the service right away"
+    }
+  ]
+}
